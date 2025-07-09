@@ -1,0 +1,17 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+  pre_build:
+    commands:
+      - yum install -y jq
+      - export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token --domain demo-domain --query authorizationToken --output text)
+      - export CODEARTIFACT_REPO_ENDPOINT=$(aws codeartifact get-repository-endpoint --domain demo-domain --repository demo-repo --format npm --output text)
+  build:
+    commands:
+      - jq -r '.private |= false' package.json > package2.json
+      - jq -r '.name |= "my-lodash-fork"' package2.json > package.json
+      - npm config set registry ${CODEARTIFACT_REPO_ENDPOINT}
+      - npm config set ${CODEARTIFACT_REPO_ENDPOINT}:_authToken=${CODEARTIFACT_AUTH_TOKEN}
+      - npm publish
