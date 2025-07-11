@@ -1,56 +1,53 @@
-set -xeu
+#!/bin/env bash
 
-# IAM
+set -xeuo pipefail
 
-aws iam create-role --role-name demo-role --assume-role-policy-document file://role.json
-aws iam put-role-policy --role-name demo-role --policy-name demo-policy --policy-document file://policy.json
+# Create IAM role and policy
+awslocal iam create-role --role-name demo-role --assume-role-policy-document file://role.json
+awslocal iam put-role-policy --role-name demo-role --policy-name demo-policy --policy-document file://policy.json
 
-ROLE_ARN=arn:aws:iam::623948600419:role/demo-role
+ROLE_ARN=$(awslocal iam get-role --role-name demo-role --query Role.Arn --output text)
 
-# CodeArtifact
+# Create CodeArtifact repository for the NPM package
+awslocal codeartifact create-domain --domain demo-domain
+awslocal codeartifact create-repository --domain demo-domain --repository demo-repo
 
-aws codeartifact create-domain --domain demo-domain
-aws codeartifact create-repository --domain demo-domain --repository demo-repo
+# Upload BuildSpecs to an S3 bucket
+awslocal s3 mb s3://demo-buildspecs
+awslocal s3 cp demo-test.yaml s3://demo-buildspecs
+awslocal s3 cp demo-publish.yaml s3://demo-buildspecs
 
-# CodeBuild
-
-aws s3 mb s3://demo-buildspecs
-aws s3 cp demo-test.yaml s3://demo-buildspecs
-aws s3 cp demo-publish.yaml s3://demo-buildspecs
-
-aws codebuild create-project --name demo-test \
+# Create CodeBuild projects mentioning the BuildSpecs in the S3 bucket
+awslocal codebuild create-project --name demo-test \
     --source type=CODEPIPELINE,buildspec=arn:aws:s3:::demo-buildspecs/demo-test.yaml \
     --artifacts type=CODEPIPELINE \
     --environment type=LINUX_CONTAINER,image=aws/codebuild/amazonlinux-x86_64-standard:5.0,computeType=BUILD_GENERAL1_SMALL \
     --service-role ${ROLE_ARN}
 
-aws codebuild create-project --name demo-publish \
+awslocal codebuild create-project --name demo-publish \
     --source type=CODEPIPELINE,buildspec=arn:aws:s3:::demo-buildspecs/demo-publish.yaml \
     --artifacts type=CODEPIPELINE \
     --environment type=LINUX_CONTAINER,image=aws/codebuild/amazonlinux-x86_64-standard:5.0,computeType=BUILD_GENERAL1_SMALL \
     --service-role ${ROLE_ARN}
 
-#
-# CodeConnections
-#
+# Create a CodeConnection connection. This is optional in LocalStack.
+CODECONNECT_ARN=$(awslocal codeconnections create-connection --connection-name demo-connection --provider-type GitHub --query ConnectionArn --output text)
 
-aws codeconnections create-connection --connection-name demo-connection --provider-type GitHub
-# Validate on AWS Console
+# Create the artifact bucket
+awslocal s3 mb s3://demo-artif-bucket
 
-CODECONNECT_ARN=arn:aws:codeconnections:eu-central-1:623948600419:connection/b61a7b14-1e38-4c0c-a276-556bdab96fa3
+# Create the pipeline
+awslocal codepipeline create-pipeline --pipeline file://./demo-pipeline.json
 
-#
-# CodePipeline
-#
+# Wait for the pipeline to finish
+status=
+until [[ $status =~ Succeeded ]]; do
+    status=$(awslocal codepipeline list-pipeline-executions --pipeline-name demo-pipeline --output text --query pipelineExecutionSummaries[0].status)
+    sleep 5
+done
 
-aws s3 mb s3://demo-artif-bucket
+# Configure NPM to work with the local CodeArtifact repository
+awslocal codeartifact login --tool npm --domain demo-domain --repository demo-repo
 
-aws codepipeline create-pipeline --pipeline file://./demo-pipeline.json
-
-aws codeartifact get-repository-endpoint --domain demo-domain --repository demo-repo --format npm
-aws codeartifact get-authorization-token --domain demo-domain --query authorizationToken --output text
-
-npm config set registry http://demo-domain-000000000000.d.codeartifact.eu-central-1.localhost.localstack.cloud:4566/npm/demo-repo/
-npm config set //demo-domain-000000000000.d.codeartifact.eu-central-1.localhost.localstack.cloud:4566/npm/demo-repo/:_authToken=asdf123
-
+# Try to download the NPM package
 npm pack my-lodash-fork
