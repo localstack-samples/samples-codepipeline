@@ -47,6 +47,7 @@ until [[ $status =~ Succeeded ]]; do
 done
 
 # Configure NPM to work with the local CodeArtifact repository
+# Warning: This will reconfigure your system NPM configuration
 awslocal codeartifact login --tool npm --domain demo-domain --repository demo-repo
 
 # Try to download the NPM package
