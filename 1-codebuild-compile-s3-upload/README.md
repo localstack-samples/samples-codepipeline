@@ -1,8 +1,6 @@
-# sample-codepipeline-compile-publish
-
 This sample creates a CodePipeline pipeline that builds the [fzf](https://github.com/junegunn/fzf/) project and publishes the compiled binary to S3.
 
-You must set `CODEPIPELINE_GH_TOKEN` environment config option to the [PAT token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token). GitHub requires this to [download](https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#download-a-repository-archive-zip) even public repositories.
+You must set `CODEPIPELINE_GH_TOKEN` environment config option to the [PAT token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token). GitHub requires this to [download](https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#download-a-repository-archive-zip) archives of repositories.
 
 Start LocalStack using [any supported method](https://docs.localstack.cloud/getting-started/installation/#starting-localstack), or:
 

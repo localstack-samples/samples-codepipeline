@@ -1,0 +1,79 @@
+{
+  "pipelineType": "V1",
+  "name": "demo-pipeline",
+  "roleArn": "arn:aws:iam::000000000000:role/demo-role",
+  "artifactStore": {
+    "type": "S3",
+    "location": "demo-artif-bucket"
+  },
+  "stages": [
+    {
+      "name": "source",
+      "actions": [
+        {
+          "name": "get-source-code",
+          "actionTypeId": {
+            "category": "Source",
+            "owner": "AWS",
+            "provider": "CodeStarSourceConnection",
+            "version": "1"
+          },
+          "outputArtifacts": [
+            {
+              "name": "source-code"
+            }
+          ],
+          "configuration": {
+            "ConnectionArn": "arn:aws:codeconnections:eu-central-1:000000000000:connection/b61a7b14-1e38-4c0c-a276-556bdab96fa3",
+            "FullRepositoryId": "lodash/lodash",
+            "BranchName": "4.17.21"
+          }
+        }
+      ]
+    },
+    {
+      "name": "test",
+      "actions": [
+        {
+          "name": "run-tests",
+          "actionTypeId": {
+            "category": "Test",
+            "owner": "AWS",
+            "provider": "CodeBuild",
+            "version": "1"
+          },
+          "inputArtifacts": [
+            {
+              "name": "source-code"
+            }
+          ],
+          "configuration": {
+            "ProjectName": "demo-test"
+          }
+        }
+      ]
+    },
+    {
+      "name": "publish",
+      "actions": [
+        {
+          "name": "publish-package",
+          "actionTypeId": {
+            "category": "Build",
+            "owner": "AWS",
+            "provider": "CodeBuild",
+            "version": "1"
+          },
+          "inputArtifacts": [
+            {
+              "name": "source-code"
+            }
+          ],
+          "configuration": {
+            "ProjectName": "demo-publish"
+          }
+        }
+      ]
+    }
+  ]
+}
