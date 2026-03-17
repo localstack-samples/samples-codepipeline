@@ -1,12 +1,6 @@
 # LocalStack CodePipeline Samples
 
-This repository contains two sample applications that demonstrate LocalStack's CodePipeline emulation with CodeBuild, S3, and CodeArtifact workflows.
-
-## LocalStack CodePipeline Notes
-
-LocalStack emulates a practical subset of AWS CodePipeline behavior for local development and testing. Before running these samples, review the current CodePipeline limitations:
-
-- https://docs.localstack.cloud/aws/services/codepipeline/#limitations
+This repository contains two sample applications that demonstrate [LocalStack's CodePipeline emulation](https://docs.localstack.cloud/aws/services/codepipeline) with CodeBuild, S3, and CodeArtifact workflows.
 
 ## Prerequisites
 
