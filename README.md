@@ -19,6 +19,15 @@ If you start LocalStack with `lstk start`, export the token as `LOCALSTACK_CODEP
 
 Each `run.sh` fails if the pipeline execution fails or takes longer than `MAX_WAIT_SECONDS` (default 1800).
 
+Pull the CodeBuild images before the first run:
+
+```bash
+docker pull public.ecr.aws/codebuild/amazonlinux-x86_64-standard:5.0
+docker pull localstack/aws-codebuild-local:2
+```
+
+LocalStack stops tracking a build if its image is still downloading a few seconds after the build starts, and the pipeline then stays `InProgress`.
+
 ## Samples
 
 - [1-codebuild-compile-s3-upload](1-codebuild-compile-s3-upload/README.md): Builds `fzf` with CodeBuild and uploads the resulting binary to S3 through CodePipeline.
