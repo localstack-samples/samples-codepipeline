@@ -36,8 +36,15 @@ jobs:
       # so pull the CodeBuild images (about 17 GB) before starting the pipeline
       - name: Pull the CodeBuild images
         run: |
-          docker pull -q public.ecr.aws/codebuild/amazonlinux-x86_64-standard:5.0
-          docker pull -q localstack/aws-codebuild-local:2
+          # Anonymous ECR Public pulls are rate limited per IP, which runners share
+          for image in public.ecr.aws/codebuild/amazonlinux-x86_64-standard:5.0 localstack/aws-codebuild-local:2; do
+            for attempt in 1 2 3 4 5; do
+              docker pull -q "$image" && break
+              [ "$attempt" = 5 ] && exit 1
+              echo "Pull of $image failed, retrying in 60s"
+              sleep 60
+            done
+          done
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
