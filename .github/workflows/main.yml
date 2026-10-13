@@ -1,0 +1,82 @@
+name: Run on LocalStack
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    name: ${{ matrix.sample }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        sample:
+          - 1-codebuild-compile-s3-upload
+          - 2-codebuild-test-codeartifact-publish
+    defaults:
+      run:
+        working-directory: ${{ matrix.sample }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # LocalStack stops tracking a build whose image is still downloading,
+      # so pull the CodeBuild images (about 17 GB) before starting the pipeline
+      - name: Pull the CodeBuild images
+        run: |
+          # Anonymous ECR Public pulls are rate limited per IP, which runners share
+          for image in public.ecr.aws/codebuild/amazonlinux-x86_64-standard:5.0 localstack/aws-codebuild-local:2; do
+            for attempt in 1 2 3 4 5; do
+              docker pull -q "$image" && break
+              [ "$attempt" = 5 ] && exit 1
+              echo "Pull of $image failed, retrying in 60s"
+              sleep 60
+            done
+          done
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install lstk
+        run: |
+          npm install -g @localstack/lstk
+          lstk setup aws --force --non-interactive
+
+      - name: Start LocalStack
+        env:
+          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+          # Forwarded as CODEPIPELINE_GH_TOKEN, used to download the source archives from GitHub
+          LOCALSTACK_CODEPIPELINE_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: lstk start
+
+      - name: Run the pipeline
+        env:
+          MAX_WAIT_SECONDS: 1200
+        run: bash run.sh
+
+      - name: Show pipeline state and LocalStack logs
+        if: failure()
+        run: |
+          lstk aws codepipeline get-pipeline-state --name demo-pipeline || true
+          lstk aws codepipeline list-action-executions --pipeline-name demo-pipeline || true
+          builds=$(lstk aws codebuild list-builds --query 'ids' --output text || true)
+          [ -n "$builds" ] && lstk aws codebuild batch-get-builds --ids $builds \
+            --query 'builds[].{id: id, status: buildStatus, phases: phases[].[phaseType, phaseStatus, contexts[0].message]}' || true
+          docker ps -a
+          docker images
+          df -h /
+          lstk logs | grep -vE 'ListPipelineExecutions|ListActionExecutions' | tail -400

@@ -30,10 +30,22 @@ lstk aws codepipeline create-pipeline --pipeline file://./pipeline.json
 lstk aws codepipeline list-pipeline-executions --pipeline-name demo-pipeline
 
 # Wait for pipeline to finish
+MAX_WAIT_SECONDS=${MAX_WAIT_SECONDS:-1800}
 status=
-until [[ $status =~ Succeeded ]]; do
-    status=$(lstk aws codepipeline list-pipeline-executions --pipeline-name demo-pipeline --output text --query pipelineExecutionSummaries[0].status)
+waited=0
+until [[ $status == Succeeded ]]; do
+    if [[ $status =~ ^(Failed|Stopped|Superseded)$ ]]; then
+        echo "Pipeline execution ended with status $status"
+        lstk aws codepipeline get-pipeline-state --name demo-pipeline
+        exit 1
+    fi
+    if (( waited >= MAX_WAIT_SECONDS )); then
+        echo "Pipeline did not finish within ${MAX_WAIT_SECONDS}s, last status: $status"
+        exit 1
+    fi
     sleep 5
+    waited=$((waited + 5))
+    status=$(lstk aws codepipeline list-pipeline-executions --pipeline-name demo-pipeline --output text --query 'pipelineExecutionSummaries[0].status')
 done
 
 # Retrieve build
@@ -42,4 +54,4 @@ lstk aws s3 cp s3://output-bucket/fzf/fzf .
 # Try build
 file fzf
 chmod +x fzf
-./fzf --version
+./fzf --version | grep '^0.62 '
