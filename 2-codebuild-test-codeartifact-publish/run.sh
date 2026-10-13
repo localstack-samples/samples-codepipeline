@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/usr/bin/env bash
 
 set -xeuo pipefail
 
@@ -40,10 +40,22 @@ lstk aws s3 mb s3://demo-artif-bucket
 lstk aws codepipeline create-pipeline --pipeline file://./demo-pipeline.json
 
 # Wait for the pipeline to finish
+MAX_WAIT_SECONDS=${MAX_WAIT_SECONDS:-1800}
 status=
-until [[ $status =~ Succeeded ]]; do
-    status=$(lstk aws codepipeline list-pipeline-executions --pipeline-name demo-pipeline --output text --query pipelineExecutionSummaries[0].status)
+waited=0
+until [[ $status == Succeeded ]]; do
+    if [[ $status =~ ^(Failed|Stopped|Superseded)$ ]]; then
+        echo "Pipeline execution ended with status $status"
+        lstk aws codepipeline get-pipeline-state --name demo-pipeline
+        exit 1
+    fi
+    if (( waited >= MAX_WAIT_SECONDS )); then
+        echo "Pipeline did not finish within ${MAX_WAIT_SECONDS}s, last status: $status"
+        exit 1
+    fi
     sleep 5
+    waited=$((waited + 5))
+    status=$(lstk aws codepipeline list-pipeline-executions --pipeline-name demo-pipeline --output text --query 'pipelineExecutionSummaries[0].status')
 done
 
 # Configure NPM to work with the local CodeArtifact repository
@@ -52,3 +64,6 @@ lstk aws codeartifact login --tool npm --domain demo-domain --repository demo-re
 
 # Try to download the NPM package
 npm pack my-lodash-fork
+
+# Check the downloaded package is the fork published by the pipeline
+tar -xzOf my-lodash-fork-*.tgz package/package.json | grep '"name": "my-lodash-fork"'

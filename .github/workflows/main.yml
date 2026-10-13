@@ -1,0 +1,64 @@
+name: Run on LocalStack
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    name: ${{ matrix.sample }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        sample:
+          - 1-codebuild-compile-s3-upload
+          - 2-codebuild-test-codeartifact-publish
+    defaults:
+      run:
+        working-directory: ${{ matrix.sample }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The CodeBuild image LocalStack runs builds in is over 6 GB compressed
+      - name: Free disk space
+        working-directory: .
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install lstk
+        run: |
+          npm install -g @localstack/lstk
+          lstk setup aws --force --non-interactive
+
+      - name: Start LocalStack
+        env:
+          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+          # Forwarded as CODEPIPELINE_GH_TOKEN, used to download the source archives from GitHub
+          LOCALSTACK_CODEPIPELINE_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: lstk start
+
+      - name: Run the pipeline
+        run: bash run.sh
+
+      - name: Show LocalStack logs
+        if: failure()
+        run: lstk logs | tail -300
