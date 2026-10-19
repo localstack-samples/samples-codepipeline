@@ -19,6 +19,10 @@ jobs:
     name: ${{ matrix.sample }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      # Push the CodeBuild image copy to ghcr.io (see "Pull the CodeBuild images")
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -35,16 +39,32 @@ jobs:
       # LocalStack stops tracking a build whose image is still downloading,
       # so pull the CodeBuild images (about 17 GB) before starting the pipeline
       - name: Pull the CodeBuild images
+        env:
+          BUILD_IMAGE: public.ecr.aws/codebuild/amazonlinux-x86_64-standard:5.0
+          # Copy of BUILD_IMAGE in this organization's GitHub registry. Anonymous ECR Public pulls come from
+          # the runners' shared IPs and fail with "toomanyrequests: Data limit exceeded" once an IP has used
+          # its monthly quota, which retries on the same runner cannot fix. Delete the package to refresh it.
+          MIRROR_IMAGE: ghcr.io/${{ github.repository_owner }}/codebuild-amazonlinux-x86_64-standard:5.0
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Anonymous ECR Public pulls are rate limited per IP, which runners share
-          for image in public.ecr.aws/codebuild/amazonlinux-x86_64-standard:5.0 localstack/aws-codebuild-local:2; do
+          pull() {
             for attempt in 1 2 3 4 5; do
-              docker pull -q "$image" && break
-              [ "$attempt" = 5 ] && exit 1
-              echo "Pull of $image failed, retrying in 60s"
+              docker pull -q "$1" && return 0
+              [ "$attempt" = 5 ] && return 1
+              echo "Pull of $1 failed, retrying in 60s"
               sleep 60
             done
-          done
+          }
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin || true
+          if docker pull -q "$MIRROR_IMAGE"; then
+            docker tag "$MIRROR_IMAGE" "$BUILD_IMAGE"
+          else
+            pull "$BUILD_IMAGE"
+            # Fill the copy for later runs (needs packages: write, so it is skipped on fork pull requests)
+            docker tag "$BUILD_IMAGE" "$MIRROR_IMAGE"
+            docker push -q "$MIRROR_IMAGE" || echo "Could not push $MIRROR_IMAGE, the next run pulls from ECR Public again"
+          fi
+          pull localstack/aws-codebuild-local:2
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
